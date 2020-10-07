@@ -7,4 +7,4 @@ from [SalesLT].[Customer]
     and [SalesLT].[CustomerAddress].AddressType = 'Main Office'
     join [SalesLT].[Address] on [SalesLT].[Address].AddressID = [SalesLT].[CustomerAddress].AddressID
 group by CountryRegion, StateProvince, City
-order by CountryRegion, City, RankAmount, AmountOfClients desc;
+order by CountryRegion, AmountOfClients desc, City, RankAmount;
