@@ -1,0 +1,72 @@
+---
+title: "lab2_3"
+output: html_document
+author: "Anastasia Khudoyarova"
+date: "11/9/2020"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Load the text file
+```{r}
+zip_inp <- read.delim("./zipIncome.txt", sep='|', dec='.', header=TRUE, nrow=32038,
+                         col.names=c('zipCode', 'income'))
+```
+
+```{r}
+head(zip_inp, n=10)
+summary(zip_inp)
+```
+Mean value for income: 48245  
+Median value for income: 44163
+
+# Plot
+```{r}
+plot(zip_inp)
+
+```
+
+Outliers equals 0 and 250000 as they are smaller / larger most part of all values
+```{r}
+filtered_zip_income <- subset(zip_inp, income > 7000 & income < 200000)
+```
+
+# Filter data
+```{r}
+filterded_data <- subset(zip_inp, income > 7000 & income < 200000)
+head(filterded_data)
+summary(filterded_data)
+```
+New income Mean:48465
+New income median: 44234
+
+## Visualization
+```{r}
+boxplot(income ~ zipCode, data=filterded_data,col="white", main='Average Household Income by Zip Code', xlab='Zip Codes', ylab='Income')
+```
+
+# Log boxplot
+```{r}
+boxplot(income ~ zipCode, data=filterded_data, main='Average Income by Zip Code. Log scale', xlab='ZipCode', ylab='Income',  log = "y", col = "white")
+```
+
+# GGplot
+```{r}
+library(ggplot2)
+g <- ggplot(data=filterded_data, mapping = aes(x=zipCode, y=income))
+g + geom_point(position = "jitter", alpha=0.2) +scale_y_log10()
+  #scale_y_continuous(trans = "log10")
+ 
+```
+
+
+# GGplot and boxplot
+```{r}
+g <- ggplot(filterded_data, aes(x=as.factor(zipCode), y=income))
+g_single <- g + geom_point(aes(colour=factor(zipCode)), position='jitter', alpha=0.2) + scale_y_log10()
+g_boxplot <- g_single + geom_boxplot(aes(group=zipCode), alpha=0.1, outlier.size = -Inf)
+plot(g_boxplot + labs(color="Region", x="ZipCode", y="Income", title="Average income by ZipCode"))
+```
+

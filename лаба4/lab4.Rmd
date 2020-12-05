@@ -1,0 +1,304 @@
+---
+title: "lab4"
+output: html_document
+author: "Anastasia Khudoyarova"
+date: "11/9/2020"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# Data preparation
+```{r}
+df <- get(load("./income_elec_state.Rdata"))
+
+head(df, n = 10)
+```
+
+
+```{r}
+colnames(df)
+df <- cbind(df,state=rownames(df))
+rownames(df) <- NULL
+names(df)[names(df) == "income"] <- "mean_household_income"
+names(df)[names(df) == "elec"] <- "mean_electricity_usage"
+head(df, n = 10)
+```
+
+# View
+```{r}
+library(ggplot2)
+g <- ggplot(data=df, mapping = aes(x=mean_household_income, y=mean_electricity_usage))
+g + geom_point()
+```
+
+# Clusterization
+```{r}
+clusters <- kmeans(df[, 1:2], centers=10, nstart = 300, iter.max=100)
+```
+
+```{r}
+library(ggplot2)
+g <- ggplot()
+g1 <- g + 
+  geom_point(df, mapping = aes(x=mean_household_income, y=mean_electricity_usage, colour=factor(clusters$cluster)), shape=1) + 
+  geom_point(mapping = aes(x = clusters$center[, 'mean_household_income'], 
+                                  y = clusters$center[, 'mean_electricity_usage'],
+                                  size=1), shape=8)
+plot(g1)
+```
+
+# Estimate number of clusters. 
+## Elbow method
+```{r}
+kmean_withinss <- function(k) {
+    cluster <- kmeans(df[,1:2], k, nstart=300, iter.max = 100)
+    return (cluster$tot.withinss)
+}
+
+
+max_cluster <-20 
+wss <- sapply(2:max_cluster, kmean_withinss)
+elbow <-data.frame(2:max_cluster, wss)
+```
+
+## Plot the graph for estimation
+```{r}
+ggplot(elbow, aes(x = X2.max_cluster, y = wss)) +
+    geom_point() +
+    geom_line() +
+    scale_x_continuous(breaks = seq(1, 20, by = 1)) + labs(title = "Elbow method\n", x = "number of clusters", y = "Total within-clusters sum of square") 
+```
+
+I think `k = 4` or `k = 5` is optimal variant
+
+# Log scaled data and reevaluate
+## Scale log10
+```{r}
+df$income_log10 <- log10(df$mean_household_income)
+df$electricity_log10 <- log10(df$mean_electricity_usage)
+head(df, n = 10)
+```
+
+## Clusterization for log scaled data
+```{r}
+clusters <- kmeans(df[, 4:5], centers=5, nstart = 300, iter.max=100)
+centers <- clusters$centers
+```
+
+## Visualization
+### Log10
+```{r}
+library(ggplot2)
+g <- ggplot()
+g1 <- g + 
+  geom_point(df, mapping = aes(income_log10, electricity_log10, colour=factor(clusters$cluster))) 
+plot(g1+geom_text(df, mapping=aes(income_log10, electricity_log10, label=state)))
+```
+
+### Simple
+```{r}
+g <- ggplot()
+g1 <- g + 
+  geom_point(df, mapping = aes(mean_household_income, mean_electricity_usage, colour=factor(clusters$cluster))) 
+plot(g1)
+```
+
+They became more believable and correct view information.
+
+# Reevaluate k for log scaled data
+```{r}
+kmean_withinss <- function(k) {
+    cluster <- kmeans(df[,4:5], k, nstart=300, iter.max = 100)
+    return (cluster$tot.withinss)
+}
+max_cluster <-20 
+wss <- sapply(2:max_cluster, kmean_withinss)
+elbow <-data.frame(2:max_cluster, wss)
+```
+
+## Plot the graph for estimation
+```{r}
+ggplot(elbow, aes(x = X2.max_cluster, y = wss)) +
+    geom_point() +
+    geom_line() +
+    scale_x_continuous(breaks = seq(1, 20, by = 1)) + labs(title = "Elbow method\n", x = "number of clusters", y = "Total within-clusters sum of square") 
+```
+
+`k=5` is correct amount of clusters because we can see at the graph 
+
+# Outlier  
+
+As we can see outlier is Puerto Rico
+
+### Remove outlier and get new k
+```{r}
+df_clear <- df[df$state != 'PR', ]
+```
+
+## Reevaluate k for df without outlier
+```{r}
+kmean_withinss <- function(k) {
+    cluster <- kmeans(df_clear[,4:5], k, nstart=100, iter.max = 100)
+    return (cluster$tot.withinss)
+}
+
+max_cluster <-20 
+wss <- sapply(2:max_cluster, kmean_withinss)
+elbow <-data.frame(2:max_cluster, wss)
+```
+
+## Plot for non outlier data
+```{r}
+ggplot(elbow, aes(x = X2.max_cluster, y = wss)) +
+    geom_point() +
+    geom_line() +
+    scale_x_continuous(breaks = seq(1, 20, by = 1)) + labs(title = "Elbow method\n", x = "number of clusters", y = "Total within-clusters sum of square") 
+```
+
+When delete outlier we see that elbow when `k=4`
+
+# Map
+
+```{r}
+rownames(df) <- df$state
+```
+
+```{r}
+map_clusters <- kmeans(df[df$state != 'AK' & df$state != 'HI' & df$state != 'PR' & df$state != 'VI' & df$state != 'AS',4:5], centers=4, nstart = 100, iter.max=100)
+map_clusters
+maps::map(database = 'state', col = map_clusters$cluster, fill = TRUE)
+```
+
+# Hierarchical clustering
+## Using different linkage metrices for hierarchical clustering 
+```{r}
+d <- dist(df[,1:2])
+
+average= hclust(d, method = "average" )
+plot(average, cex = 0.7, hang = -1, main = "Average linkage")
+rect.hclust(average, k=5)
+
+average_tree <- cutree(average, k = 5)
+f <- ggplot() + 
+  geom_point(df, mapping = aes(mean_household_income, mean_electricity_usage, colour=factor(average_tree))) 
+plot(f + ggtitle("Hierarchical clastering. Average linkage"))
+```
+
+```{r}
+single = hclust(d, method = "single" )
+plot(single, cex = 0.7, hang = -1, main = "Single linkage")
+rect.hclust(single, k=5)
+
+single_tree <- cutree(single, k = 5)
+f <- ggplot() + 
+  geom_point(df, mapping = aes(mean_household_income, mean_electricity_usage, colour=factor(single_tree))) 
+plot(f + ggtitle("Hierarchical clastering. Single linkage"))
+```
+
+```{r}
+hcd <- as.dendrogram(hclust(d, method = "ward.D2" ))
+nodePar <- list(lab.cex = 0.7, pch = c(NA, 19), cex = 0.7, col = "blue")
+plot(hcd,  xlab = "Height", nodePar = nodePar, horiz = TRUE,
+     edgePar = list(col = 2:3, lwd = 2:1), main = "Ward linkage")
+```
+
+```{r}
+res <- hclust(d, method = "complete" )
+grp <- cutree(res, k = 5)
+plot(res, cex = 0.7, main = "Complete linkage")
+rect.hclust(res, k = 5, border = 2:5)
+
+f <- ggplot() + 
+  geom_point(df, mapping = aes(mean_household_income, mean_electricity_usage, colour=factor(grp))) 
+plot(f + ggtitle("Hierarchical clastering. Complete linkage"))
+```
+
+
+As we can see Puerto Riko is an outlier
+
+## Log10 scaled data
+```{r}
+d <- dist(df[,4:5])
+res <- hclust(d, method = "complete" )
+grp <- cutree(res, k = 5)
+plot(res, cex = 0.7, main = "Complete linkage")
+rect.hclust(res, k = 5, border = 2:5)
+```
+
+Puerto Riko definitely separated from others
+
+# Estimate amount of clusters
+
+```{r}
+library(cluster)
+library(factoextra)
+```
+
+## Elbow method
+```{r}
+fviz_nbclust(df[,4:5], hcut, method = "wss")
+```
+
+Wss method gives `k=5`.
+
+## silhouette method
+```{r}
+fviz_nbclust(df[,4:5], hcut, method = "silhouette")
+```
+
+A high average silhouette width indicates a good clustering at `k=9`
+
+## Gap statistic
+```{r}
+gap_stat <- clusGap(df[,4:5], FUN = hcut, nstart = 200,
+                    K.max = 20, B = 50)
+fviz_gap_stat(gap_stat)
+```
+
+clusGap gives `k=1`.
+
+## Graph for k = 5
+```{r}
+fviz_cluster(list(cluster = grp, data = df[,4:5]))
+```
+
+## Graph for k = 1
+```{r}
+grp <- cutree(res, k = 1)
+fviz_cluster(list(cluster=grp, data = df[,4:5]))
+```
+
+## Graph for k = 9
+```{r}
+grp <- cutree(res, k = 9)
+fviz_cluster(list(cluster=grp, data = df[,4:5]))
+```
+
+The most suitable variant is `k=5`: if `k=1` then all data in one cluster that is bad, if `k=9` then there is other outlier that is can be inside cluster.
+
+
+# Map (for test)
+```{r}
+map_order <- c('AL', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'DC', 'FL',
+'GA', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME',
+'MD', 'MA', 'MA', 'MA', 'MI', 'MI', 'MN', 'MS', 'MO',
+'MT', 'NE', 'NV', 'NH', 'NJ', 'NM', 'NY', 'NY', 'NY',
+'NY', 'NC', 'NC', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA',
+'RI', 'SC', 'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'VA',
+'VA', 'WA', 'WA', 'WA', 'WA', 'WA', 'WV', 'WI', 'WY')
+
+rownames(df) <- df$state
+
+clusters <- kmeans(df[map_order, 4:5], 4, nstart = 100, iter.max=100)
+
+map_color <- clusters$cluster[map_order]
+
+library(maps)
+maps::map('state', col = map_color, fill = TRUE)
+```
+
+```{r}
+elem <- factor(clusters$cluster)
+levels(elem)
+```

@@ -1,0 +1,178 @@
+---
+title: "lab5"
+output: html_document
+author: "Anastasia Khudoyarova"
+date: "11/14/2020"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(ggplot2)
+library(arules)
+library(arulesViz)
+data <- read.transactions('./AssociationRules.csv')
+```
+
+
+## Determine the most frequent item bought in the store. 
+```{r}
+itemFrequency(data, type='absolute')
+```
+
+## Frequent item plot
+```{r}
+itemFrequencyPlot(data, type='absolute', topN=10)
+```
+
+## Find the maximum item 
+```{r}
+freq <- data.frame(itemFrequency(data, type = "absolute"))
+freq <- cbind(item=rownames(freq), amount=freq)
+names(freq) <- c("item","amount")
+freq[freq$amount == max(freq$amount),]
+```
+
+##    How many items were bought in the largest transaction?
+```{r}
+max(size(data))
+```
+
+
+##  Mine the Association rules with a minimum Support of 1% and a minimum Confidence of 0%. 
+```{r}
+rules_0 <- apriori(data, parameter = list(supp = 0.01, conf = 0.0, target = "rules"))
+```
+
+## Amount of rules for confidence=0%
+```{r}
+length(rules_0)
+```
+
+## How many rules are observed when the minimum confidence is 50%.
+```{r}
+rules_50 <- apriori(data, parameter = list(supp = 0.01, conf = 0.5, target="rules"))
+```
+
+## Amount of rules for confidence=50%
+```{r}
+length(rules_50)
+
+```
+
+```{r}
+inspect(head(rules_50[1:10]))
+```
+
+## Create a scatter plot comparing the parameters support and confidence on the axis, and lift with shading.
+
+```{r}
+plot(rules_50, measure = c('support', 'confidence'), shading = 'lift', engine="htmlwidget", max=100000,jitter=0)
+```
+
+## Where are the rules located that would be considered interesting and useful?  
+С высоким lift и confidence, то есть красные и чем выше, тем лучше
+
+
+## Create a scatter plot measuring support vs. lift; record your observations.  
+
+```{r}
+plot(rules_50, measure = c('support', 'lift'), shading = 'confidence', engine="htmlwidget", max=100000,jitter=0)
+```
+## Create a scatter plot measuring support vs. lift; record your observations.  
+Чем выше и краснее, те соответствуют предыдущему графику 
+
+##  One downside to the Apriori algorithm, is that extraneous rules can be generated that are not particularly useful.  Identify where these rules are located on the graph.  Explain the relationship between the expected observation of these itemsets and the actual observation of the itemsets.  
+С низким lift и support, то есть всё, что находится внизу графика и светло - красное 
+
+## Get Using the interaction tool for a scatter plot, identify 3 rules that appear in at least 10% of the transactions by coincidence. 
+```{r}
+rules_coinc<- apriori(data, parameter = list(supp = 0.1, conf = 0.0))
+inspect(head(rules_coinc, n = 3, by='confidence', decreasing = TRUE))
+```
+     lhs         rhs      support confidence coverage lift     count
+
+ [1] {item37} => {item13} 0.1104  0.5606907  0.1969   1.133166 1104 
+
+ [2] {item20} => {item13} 0.1034  0.5604336  0.1845   1.132647 1034 
+
+ [3] {item3}  => {item13} 0.1164  0.5457103  0.2133   1.102891 1164
+
+Если смотреть по графику, то по первому графику это три точки, обладающие support = 0.1 и выше, точки с самым высоким confidence и lift около 1, чтобы эта транзакция была случайной (серые точки).
+
+Если смотреть по второму графику, то это должны быть точки, которые с support выше 0,1 lift около 1, но высоким confidence, то есть выбираем красноватые точки.
+
+## Identify the most interesting rules by extracting the rules in which the Confidence is >0.8. Observe the output of the data table for the most interesting rules.
+```{r}
+rules_task <- apriori(data, parameter = list(supp = 0.01, conf = 0.8))
+inspect(head(rules_task, n = 10, by='lift', decreasing = TRUE))
+```
+##  Sort the rules stating the highest lift first.  Provide the 10 rules with the lowest lift. Do they appear to be coincidental?  Why or why not?  
+```{r}
+rrules_task <- apriori(data, parameter = list(supp = 0.01, conf = 0.8))
+inspect(tail(sort(rules_task, by='lift', decreasing = TRUE), n=10))
+```
+Похожи на случайные правила, поскольку с высоким confidence и lift низкий
+
+# Matrix-based visualization
+```{r}
+plot(rules_task, shading = c('lift', 'confidence'), method = 'matrix')
+```
+ 
+## Identify these rules and explain their appearance. 
+Зеленые, розовые и красные, поскольку они обладают высоким и lift, и confidence
+
+## What can you infer about rules represented by a dark blue color?
+Lift очень низкий и confidence = 1, то есть это случайные правила
+
+# Graph
+```{r}
+rules_graph <- apriori(data, parameter = list(supp = 0.01, conf = 0.5))
+rel <- head(rules_graph, n = 3, by = 'lift')
+plot(rel, method = 'graph')
+```
+
+```{r}
+inspect(rel)
+```
+
+# Create a training set from the first 8,000 transactions. Create a testing set from the last 2,000 transactions.  Run the algorithm on each dataset.  Compare the results.
+```{r}
+train_set <- data[1:8000,]
+valid_set <- data[8001:10000,]
+
+train_rules <- apriori(train_set, parameter = list(supp = 0.01, conf = 0.1, target="rules"))
+valid_rules <- apriori(valid_set, parameter = list(supp = 0.01, conf = 0.1, target="rules"))
+```
+We got for train 10786 rules
+We got for test - 12276 rules 
+
+```{r}
+test_1 <- DATAFRAME(train_rules)
+test_2 <- DATAFRAME(valid_rules)
+```
+
+To verify that out supp and conf are correct let's find mean for training data and validation data
+```{r}
+summary(test_1)
+summary(test_2)
+```
+
+## Justify that the relationships we see are not just an artifact of the data we started with
+For training data:
+
+Mean(support) = 0.01899
+
+Mean(confidence) = 0.2961
+
+For test set:
+
+Mean(support) = 0.0183
+
+Mean(confidence) = 0.3078
+
+that means that generated rules are correct and work on test data, not only on training set, because we got close values
+
+Это означает, что мат ожидание величин примерно равны, следовательно, они мы получили корректные правила для обоих наборов данных.
