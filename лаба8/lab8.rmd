@@ -1,0 +1,128 @@
+---
+title: "Lab 8"
+author: "Khudoyarova Anastasia"
+date: "13/13/2020"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Загружаем данные
+С помощью `read.csv` загружаем исходный `csv`
+
+```{r}
+orig_data <- read.csv(file = "nbtrain.csv", sep = ",")
+head(orig_data, n=10)
+```
+# Готовим данные
+Разделяем их на тестовый и тренировочный наборы
+```{r}
+train_data <- as.data.frame(orig_data[1:9010,]) 
+test_data <- as.data.frame(orig_data[9011:10010,])
+```
+
+```{r, echo=FALSE}
+# устанавливаем пакеты для наивного байеса и отображения матрицы
+if (!require('e1071'))
+{
+  install.packages('e1071', dependencies = TRUE)
+  library('e1071')
+}
+if (!require('caret'))
+{
+  install.packages('caret', dependencies = TRUE)
+  library('caret')
+}
+```
+
+# В данной работе мы используем алгоритм "Naive Bayes"
+Данный алгоритм основан на теореме Байеса для событий
+```{r}
+my_model <- naiveBayes(as.factor(income) ~ age + sex + educ, train_data)
+my_model
+
+prediction <- predict(my_model,test_data)
+table(prediction)
+```
+
+# Confusion matrix
+Наша модель оказалась не очень точной, для 50-80K предсказан 0
+```{r}
+confmatrix <- as.data.frame(table(prediction, test_data$income))
+ggplot(data = confmatrix, mapping = aes(x = prediction, y = Var2)) +
+  geom_tile(aes(fill = Freq)) + geom_text(aes(label = Freq)) +
+  scale_fill_gradient(low = "red", high = "yellow",
+                      trans = "pseudo_log") +
+  labs(x = "Предсказанное", y = "Настоящее")
+```
+# Misclassification rate
+Другой способ посчитать процент промаха в R - использование mean, что в итоге дает ту же формулу
+```{r}
+pred <- table(test_data$income, prediction)
+overall <- 1 - (sum(diag(pred)) / sum(pred))
+misfor.10_50 <- 1 - (pred[1,1] / sum(pred[1,]))
+misfor.50_80 <- 1 - (pred[2,2] / sum(pred[2,]))
+misfor.gt_80 <- 1 - (pred[3,3] / sum(pred[3,]))
+cat("overall - ", overall, "\n")
+cat("miscls rate (10-50K) - ", misfor.10_50, "\n")
+cat("miscls rate (50-80K) - ", misfor.50_80, "\n")
+cat("miscls rate (GT 80K) - ", misfor.gt_80, "\n")
+```
+
+# Naive Bayes для пола
+Теперь наша формула выглядит иначе - sex ~ age + educ + income
+```{r}
+my_model2 <- naiveBayes(as.factor(sex) ~ age + educ + income, train_data)
+my_model2
+prediction2 <- predict(my_model2,test_data)
+```
+
+Посчитаем для новой модели misclassification rate
+```{r}
+pred2 <- table(test_data$sex, prediction2)
+overall_sex <- 1 - (sum(diag(pred2)) / sum(pred2))
+misfor.f <- 1 - (pred2[1,1] / sum(pred2[1,]))
+misfor.m <- 1 - (pred2[2,2] / sum(pred2[2,]))
+cat("overall - ", overall_sex, "\n")
+cat("miscls rate (F) - ", misfor.f, "\n")
+cat("miscls rate (M) - ", misfor.m, "\n")
+```
+
+# Рандомная выборка
+До этого мы считали на данных которые были в целом, следующий пункт предлагает посчитать для специально отобранных данных
+```{r}
+library('dplyr')
+only_female <- train_data[train_data$sex == 'F',]
+only_male <- train_data[train_data$sex == 'M',]
+
+only_female <- sample_n(only_female, 3500)
+only_male <- sample_n(only_male, 3500)
+all_data <- rbind(only_female, only_male)
+```
+
+И построим нашу новую модель для искуственной выборки
+```{r}
+new_model <- naiveBayes(as.factor(sex) ~ age + educ + income, all_data)
+new_model
+```
+
+Наконец сделаем предсказания и посчитаем ошибки
+```{r}
+prediction3 <- predict(new_model, test_data)
+pred3 <- table(test_data$sex, prediction3)
+overall_sex2 <- 1 - (sum(diag(pred3)) / sum(pred3))
+misfor.f2 <- 1 - (pred3[1,1] / sum(pred3[1,]))
+misfor.m2 <- 1 - (pred3[2,2] / sum(pred3[2,]))
+cat("overall - ", overall_sex2, "\n")
+cat("miscls rate (F) - ", misfor.f2, "\n")
+cat("miscls rate (M) - ", misfor.m2, "\n")
+```
+
+
+# Заключение
+Наивный Байес интересный но не во всех случаях применимый алгоритм. Например на перекошеных данных он выдает совсем не те результаты
