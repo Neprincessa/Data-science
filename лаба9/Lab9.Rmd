@@ -1,0 +1,187 @@
+---
+title: "Lab 9"
+author: "Khudoyarova Anastasia"
+date: "12/20/2020"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+# Загружаем данные
+
+```{r}
+rawdata <- read.csv(file = "survey.csv")
+head(rawdata)
+```
+
+И делим на тестовые и тренировочные данные
+```{r}
+train_df <- as.data.frame(rawdata[1:600,])
+test_df <- as.data.frame(rawdata[601:750,])
+```
+
+
+```{r, echo=FALSE}
+if (!require('rpart'))
+{
+  install.packages('rpart', dependencies = TRUE)
+  library('rpart')
+}
+if (!require('rpart.plot'))
+{
+  install.packages('rpart.plot', dependencies = TRUE)
+  library('rpart.plot')
+}
+if (!require('ROCR'))
+{
+  install.packages('ROCR', dependencies = TRUE)
+  library('ROCR')
+}
+if (!require('pROC'))
+{
+  install.packages('pROC', dependencies = TRUE)
+  library('pROC')
+}
+if (!require('ggplot2'))
+{
+  install.packages('ggplot2', dependencies = TRUE)
+  library('ggplot2')
+}
+```
+
+# Создание дерева решений
+Тут мы используем пакет rpart 
+```{r}
+tree <- rpart(as.factor(MYDEPV) ~ Price + Income + Age, 
+              method="class",
+              data=train_df,
+              parms=list(split='information'))
+```
+
+и выводим информацию о complexity parameter
+```{r}
+printcp(tree)
+```
+
+Используем функцию plot в rpart
+```{r}
+rpart.plot(tree)
+```
+
+# Построение Confusion matrix
+
+```{r}
+prediction = predict(tree, train_df, type="class")
+confmatrix <- as.data.frame(table(prediction, train_df$MYDEPV))
+ggplot(data = confmatrix, mapping = aes(x = prediction, y = Var2)) +
+  geom_tile(aes(fill = Freq)) + geom_text(aes(label = Freq)) +
+  scale_fill_gradient(low = "red", high = "yellow",
+                      trans = "pseudo_log") +
+  labs(x = "Предсказанное", y = "Настоящее")
+```
+
+# Misclassification rate
+
+Посчет ошибок по принципу - посчитали, что верно, вычли это из 1 => получаем ошибки
+```{r}
+pred <- table(train_df$MYDEPV, prediction)
+misfor.all <- 1 - (sum(diag(pred)) / sum(pred))
+misfor.zero <- 1 - (pred[1,1] / sum(pred[1,]))
+misfor.one <- 1 - (pred[2,2] / sum(pred[2,]))
+
+cat("for overall ", misfor.all, "\n")
+cat("for zero ", misfor.zero, "\n")
+cat("for one ", misfor.one, "\n")
+```
+
+
+# Построим кривую ROC
+
+Для этого используем удобный пакет pROC. Передаем ему наши данные и получаем - AUC = 0.925
+```{r}
+sroc <- roc(train_df$MYDEPV ~ as.numeric(prediction), plot=TRUE, print.auc=TRUE)
+```
+# Misclassification rate для тестовой выборки
+
+Считаем аналогично коду выше, но для этого получаем prediction_test на основе дерева и тестовых данных
+```{r}
+prediction_test = predict(tree, test_df, type="class")
+pred2 <- table(test_df$MYDEPV, prediction_test)
+misfor.all2 <- 1 - (sum(diag(pred2)) / sum(pred2))
+misfor.zero2 <- 1 - (pred2[1,1] / sum(pred2[1,]))
+misfor.one2 <- 1 - (pred2[2,2] / sum(pred2[2,]))
+
+cat("for overall ", misfor.all2, "\n")
+cat("for zero ", misfor.zero2, "\n")
+cat("for one ", misfor.one2, "\n")
+```
+
+
+
+# Разделяющий параметр Gini
+
+Используем для построения дерева решений разделяющий параметр Gini. Многие статьи пишут, что для большинства датасетов этот индекс (index) ведет себя также как и information - проверим
+```{r}
+tree2 <- rpart(as.factor(MYDEPV) ~ Price + Income + Age, 
+               method="class",
+               data=train_df, 
+               parms=list(split='gini'))
+```
+
+Выедем complexity parameter
+```{r}
+printcp(tree2)
+```
+
+И построим дерево
+```{r}
+rpart.plot(tree2)
+```
+Дейстриветльно - изображения один в один, даже параметры деления
+
+# Обрезка дерева
+Выберем параметр cp, рекомендуют выбирать параметр для которого получается наименьшая ошибка - xerror:
+тогда возьмем:
+`cp = 0.011538`
+
+```{r}
+cutted_tree = prune(tree2, cp = 0.011538)
+rpart.plot(cutted_tree)
+```
+
+# Финал
+И наконец проверим наше обрезанное дерево на тестовых данных.
+```{r}
+prediction_cut = predict(cutted_tree, train_df, type="class")
+confmatrix2 <- as.data.frame(table(prediction_cut, train_df$MYDEPV))
+ggplot(data = confmatrix2, mapping = aes(x = prediction_cut, y = Var2)) +
+  geom_tile(aes(fill = Freq)) + geom_text(aes(label = Freq)) +
+  scale_fill_gradient(low = "red", high = "yellow",
+                      trans = "pseudo_log") +
+  labs(x = "Предсказанное", y = "Настоящее")
+```
+
+И для того чтобы оценить эти значения посчитаем Misclassification Rates
+```{r}
+prediction_cut_t = predict(tree2, train_df, type="class")
+pred3 <- table(train_df$MYDEPV, prediction_cut_t)
+misfor.all3 <- 1 - (sum(diag(pred3)) / sum(pred3))
+misfor.zero3 <- 1 - (pred3[1,1] / sum(pred3[1,]))
+misfor.one3 <- 1 - (pred3[2,2] / sum(pred3[2,]))
+
+cat("for overall ", misfor.all3, "\n")
+cat("for zero ", misfor.zero3, "\n")
+cat("for one ", misfor.one3, "\n")
+```
+
+# Заключение
+
+Данный метод прост и красив, он понятен людям далеким от анализа данных и во многом он стабильнее и надежнее остальных методов Data Mining. Но и он может давать ошибки
+

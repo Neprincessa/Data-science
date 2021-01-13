@@ -1,0 +1,195 @@
+---
+title: "lab10"
+author: "Khudoyarova Anastasia"
+date: "12/29/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Загрузка
+
+```{r}
+df <- read.table("jj.dat",
+           header=FALSE, col.names = c('EPS'))
+df <- cbind(date = rownames(df), df)
+rownames(df) <- NULL
+head(df)
+```
+
+```{r, echo=FALSE}
+library('ggplot2')
+library('forecast')
+```
+
+## a. After obtaining a copy of the dataset, plot the quarterly EPS vs. time.  Describe any patterns that you observe.
+Тут мы видим рост, причем рост идет по экспоненте. Данные не могут называться стационарными
+```{r}
+ggplot(data = df, aes(x=as.numeric(date), y=EPS)) + geom_point() +
+  geom_smooth(method = "loess", formula = y ~ x)
+
+df$times <- ts(df$EPS, start=1960, frequency=4)
+plot(df$times, xlab = "Time", ylab = "EPS")
+```
+
+
+## b. In order to perform an ARIMA model, the time series will need to be transformed to remove any trend.  Plot the difference of xt and xt-1, for all t > 0.  
+Удаление тренда временного ряда необходимо для того, чтобы убрать все периодические зависимости от времени. Так же получаем взаимосвязи между элементами становятся менее структурированными. Это называется дифференцирование, и позволяет стабилизировать среднее значение временного ряда. Для удаления тренда необходимо взять разность между текущим значением и предыдущим наблюдениями.
+Инвертирование процесса требуется, когда прогноз должен быть преобразован обратно в исходный масштаб.
+Взятие разницы между последовательным наблюдениями - lag разница. 
+```{r}
+difference <- append(c(0), diff(df$EPS))
+ggplot(df, aes(x=as.numeric(date), y=difference)) + 
+  geom_point() +
+  geom_smooth(method = "loess", formula = y ~ x)
+
+plot(diff(df$times), xlab = "Time",
+ylab = "EPS - diff")
+```
+
+Has this difference adequately detrended the series?  Нет
+Does the variability of the EPS appear constant over time?  Why does the constant variance matter? не константа постоянно
+
+## c. Plot the log10 of the quarterly EPS vs. time and plot the difference of log10(xt ) and log10(xt-1) for all t > 0.  Has this adequately detrended the series?  Has the variability of the differenced log10(EPS) become more constant?  
+Тут мы видим разброс стал не таким сильным. Данные стали более нормализованными
+```{r}
+df$EPS_log10 <- log10(df$EPS)
+
+ggplot(df, aes(x=as.numeric(date), y=EPS_log10)) + 
+  geom_point() +
+  geom_smooth(method = "loess", formula = y ~ x)
+
+log_difference <- append(c(0), diff(df$EPS_log10))
+
+ggplot(df, aes(x=as.numeric(date), y=log_difference)) + 
+  geom_point() +
+  geom_smooth(method = "loess", formula = y ~ x)
+
+plot(diff(log10(df$times)), xlab = "Time",
+ylab = "EPS - log")
+```
+
+Has this adequately detrended the series? Да, потому что стал сильнее разброс
+Has the variability of the differenced log10(EPS) become more constant? Да (сранительно предыдущего шага)
+
+## d. Treating the differenced log10 of the EPS series as a stationary series, plot the ACF and PACF of this series.  What possible ARIMA models would you consider and why? 
+Строить лучше по логарифмированным, то есть масштибированным данным, потому что там удалена периодическая зависимость.
+
+мы видим повтор данных на ACF. отсюда можно сделать вывод что максимум для AR будет 4 то есть отображенная часть (1 2 3) а для MA - 0
+То есть модели возможные:
+(3,0,2)4
+(2,0,0)4
+(1,0,0)4
+
+```{r}
+acf(diff(log10(df$times))) 
+pacf(diff(log10(df$times)))
+```
+
+
+## e. Run the proposed ARIMA models from part d and compare the results.  Identify an appropriate model.  Justify your choice.
+
+Таким образом строим с использованием ARIMA:
+
+
+```{r}
+arima_1 <- Arima(log10(df$times), order=c(1,0,0))
+arima_1
+```
+
+```{r}
+arima_1 <- Arima(log10(df$times), order=c(2,0,0))
+arima_1
+```
+
+```{r}
+arima_1 <- Arima(log10(df$times), order=c(3,0,2))
+arima_1
+```
+
+Таким образом с наименьшим AIC оказался вариант (3,0,2), но наименьшую ошибку имеет первый вариант - (1,0,0)
+
+
+#4.9
+
+Логарифм иногда может исказить данные. в таком случае применяют транформацию по проще - находят разницу между данными по сезонности
+
+#4.10
+
+Для одинаковых данных variance будет равен 1
+
+#4.11 AR(p), p=1,2,3,4
+
+Возьмем коэффициенты от уравнения 0.78, -0.45, 0.1, -0.33 и запустим моделирование на 10000
+
+```{r}
+ts.sim_AR4 <- arima.sim(n = 10000, list(ar = c(0.78, -0.45, 0.1, -0.33)))
+ggtsdisplay(ts.sim_AR4)
+```
+
+ACF похожа на синусоиду и мы явно видим тут повторения. Пик - 4
+
+```{r}
+ts.sim_AR3 <- arima.sim(n = 10000, list(ar = c(0.78, -0.45, 0.1)))
+ggtsdisplay(ts.sim_AR3)
+```
+
+Пик тройка
+
+Тут уже остаются выбросы
+
+```{r}
+ts.sim_AR2 <- arima.sim(n = 10000, list(ar = c(0.78, -0.45)))
+ggtsdisplay(ts.sim_AR2)
+```
+
+Пик - 2
+
+
+```{r}
+ts.sim_AR1 <- arima.sim(n = 10000, list(ar = c(0.78)))
+ggtsdisplay(ts.sim_AR1)
+```
+
+И наконец последнее - показывает нам плавный спуск - пик 1
+
+#4.12 MA(q) q=1,2,3,4
+
+Возьмем коэффициенты 1.78, -1.45, 1.1, -1.33
+
+```{r}
+sim_MA4 <- arima.sim(n = 10000, list( ma = c(1.78, -1.45, 1.1, -1.33)))
+ggtsdisplay(sim_MA4)
+```
+
+Отчетливо видны пики на ACF и PACF
+
+```{r}
+sim_MA3 <- arima.sim(n = 10000, list( ma = c(1.78, -1.45, 1.1)))
+ggtsdisplay(sim_MA3)
+```
+
+Так же видим пик на 3 позиции
+
+```{r}
+sim_MA2 <- arima.sim(n = 10000, list( ma = c(1.78, -1.45)))
+ggtsdisplay(sim_MA2)
+```
+Пик на второй
+
+```{r}
+sim_MA1 <- arima.sim(n = 10000, list( ma = c(1.78)))
+ggtsdisplay(sim_MA1)
+```
+И единица
+
+
+
+
+
+
+
+
+
